@@ -1,15 +1,20 @@
 ## ADDED Requirements
 
 ### Requirement: Store type selector
-The system SHALL display a selector (dropdown or radio buttons) at the top of the main window allowing the user to choose between "Steam" and "Microsoft Store" as their MSFS installation type.
+The system SHALL display a selector (dropdown) at the top of the main window allowing the user to choose between "Steam", "Microsoft Store", or "Custom" as their MSFS installation type. When "Custom" is selected, a folder browser dialog SHALL open allowing the user to select their Community folder path manually.
 
 #### Scenario: User selects store type
-- **WHEN** the application starts
+- **WHEN** the application starts with no saved config
 - **THEN** the store selector is visible and defaults to no selection (user must choose)
 
-#### Scenario: Store selection persists
-- **WHEN** the user selects a store type
-- **THEN** the selection is remembered for the current session and the aircraft list updates accordingly
+#### Scenario: User selects Custom
+- **WHEN** the user selects "Custom" from the store dropdown
+- **THEN** a folder browser dialog opens for the user to select their Community folder
+- **AND** if the user cancels the dialog, the store selection reverts to the previous value
+
+#### Scenario: Store selection persists across sessions
+- **WHEN** the user selects a store type (and custom path if applicable)
+- **THEN** the selection is saved to the config file and restored on next app launch
 
 ### Requirement: Aircraft package selector
 The system SHALL display a selector listing available PMDG aircraft packages discovered in the Community folder. Each entry SHALL show the package identifier (e.g., `pmdg-aircraft-77f`, `pmdg-aircraft-738`).
