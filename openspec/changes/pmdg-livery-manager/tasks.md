@@ -61,28 +61,28 @@
 
 ## 9. Main ViewModel
 
-- [ ] 9.1 Create MainViewModel with ObservableProperties: SelectedStoreType, CustomCommunityPath, AircraftPackages, SelectedAircraft, Liveries, IsLoading, StatusMessage
-- [ ] 9.2 Load saved config on ViewModel initialization and restore UI state
-- [ ] 9.3 Implement store type selection change handler that triggers aircraft discovery (and saves config)
-- [ ] 9.4 Implement Custom store type handler: open folder browser dialog, store path, trigger discovery
-- [ ] 9.5 Implement aircraft selection change handler that triggers livery list refresh (and saves config)
-- [ ] 9.6 Implement InstallLiveryCommand: open file dialog, run installation pipeline, regenerate layout, refresh list
-- [ ] 9.7 Implement UninstallLiveryCommand: confirm, run uninstall, regenerate layout, refresh list
-- [ ] 9.8 Add error handling and user feedback (success/error messages via StatusMessage)
+- [x] 9.1 Create MainViewModel with ObservableProperties: SelectedStoreType, CustomCommunityPath, AircraftPackages, SelectedAircraft, Liveries, IsLoading, StatusMessage
+- [x] 9.2 Load saved config on ViewModel initialization and restore UI state
+- [x] 9.3 Implement store type selection change handler that triggers aircraft discovery (and saves config)
+- [x] 9.4 Implement Custom store type handler: open folder browser dialog, store path, trigger discovery
+- [x] 9.5 Implement aircraft selection change handler that triggers livery list refresh (and saves config)
+- [x] 9.6 Implement InstallLiveryCommand: open file dialog, run installation pipeline, regenerate layout, refresh list
+- [x] 9.7 Implement UninstallLiveryCommand: confirm, run uninstall, regenerate layout, refresh list
+- [x] 9.8 Add error handling and user feedback (success/error messages via StatusMessage)
 
 ## 10. Main Window UI
 
-- [ ] 10.1 Design MainWindow.xaml layout: top toolbar (Store selector with Custom option, Aircraft selector), main area (livery list), action buttons (Install, Uninstall)
-- [ ] 10.2 Bind Store type selector (ComboBox with Steam/MS Store/Custom) to MainViewModel.SelectedStoreType
-- [ ] 10.3 Bind Aircraft selector (ComboBox) to MainViewModel.AircraftPackages and SelectedAircraft
-- [ ] 10.4 Bind livery list (ListView/DataGrid) to MainViewModel.Liveries showing folder name and atcId
-- [ ] 10.5 Bind Install and Uninstall buttons to respective commands
-- [ ] 10.6 Add progress indicator bound to IsLoading
-- [ ] 10.7 Add empty state message when no liveries are installed
-- [ ] 10.8 Add status/error message display area bound to StatusMessage
+- [x] 10.1 Design MainWindow.xaml layout: top toolbar (Store selector with Custom option, Aircraft selector), main area (livery list), action buttons (Install, Uninstall)
+- [x] 10.2 Bind Store type selector (ComboBox with Steam/MS Store/Custom) to MainViewModel.SelectedStoreType
+- [x] 10.3 Bind Aircraft selector (ComboBox) to MainViewModel.AircraftPackages and SelectedAircraft
+- [x] 10.4 Bind livery list (ListView/DataGrid) to MainViewModel.Liveries showing folder name and atcId
+- [x] 10.5 Bind Install and Uninstall buttons to respective commands
+- [x] 10.6 Add progress indicator bound to IsLoading
+- [x] 10.7 Add empty state message when no liveries are installed
+- [x] 10.8 Add status/error message display area bound to StatusMessage
 
 ## 11. Wiring & Integration
 
-- [ ] 11.1 Register services in App.xaml.cs or use simple DI (constructor injection in MainViewModel)
-- [ ] 11.2 Set MainWindow DataContext to MainViewModel
-- [ ] 11.3 Build and verify the project compiles without errors
+- [x] 11.1 Register services in App.xaml.cs or use simple DI (constructor injection in MainViewModel)
+- [x] 11.2 Set MainWindow DataContext to MainViewModel
+- [x] 11.3 Build and verify the project compiles without errors
