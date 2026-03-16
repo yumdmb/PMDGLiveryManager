@@ -483,3 +483,5 @@ $RECYCLE.BIN/
 
 # Windows reserved device name that can appear as a spurious file
 /nul
+
+.dotnet-home/

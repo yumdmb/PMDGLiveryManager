@@ -39,10 +39,14 @@ The system SHALL display a list of installed liveries for the currently selected
 - **THEN** the list area displays an empty state message (e.g., "No liveries installed")
 
 ### Requirement: Install livery action
-The system SHALL provide a button to install a new livery. Clicking it SHALL open a file picker dialog for selecting a livery ZIP file, then execute the full installation pipeline.
+The system SHALL provide a button to install a new livery. Clicking it SHALL open a file picker dialog for selecting a livery ZIP file, then execute the full installation pipeline. The system SHALL also accept a single livery ZIP file dropped onto the main window and run the same installation pipeline.
 
 #### Scenario: User installs a livery
 - **WHEN** the user clicks the Install button and selects a ZIP file
+- **THEN** the system runs the installation pipeline (extract, parse, rename, copy, regenerate layout) and refreshes the livery list
+
+#### Scenario: User drags and drops a livery ZIP
+- **WHEN** the user drops a single ZIP file onto the main window while a store type and aircraft are selected
 - **THEN** the system runs the installation pipeline (extract, parse, rename, copy, regenerate layout) and refreshes the livery list
 
 #### Scenario: Installation succeeds

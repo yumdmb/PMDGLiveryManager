@@ -8,7 +8,10 @@
         mc:Ignorable="d"
         Title="PMDG Livery Manager"
         Height="600" Width="900"
-        MinHeight="420" MinWidth="640">
+        MinHeight="420" MinWidth="640"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        PreviewDrop="Window_PreviewDrop">
 
     <Window.Resources>
         <converters:StoreTypeConverter x:Key="StoreTypeConverter"/>
@@ -113,6 +116,11 @@
                 <Button Content="Uninstall"
                         Command="{Binding UninstallLiveryCommand}"
                         MinWidth="100" Height="28"/>
+
+                <TextBlock Text="Tip: drag a .zip file onto the window to install it."
+                           Margin="16,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="#666666"/>
 
             </StackPanel>
         </Border>

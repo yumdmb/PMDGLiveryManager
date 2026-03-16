@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using LiveryManager.Models;
 using LiveryManager.Services;
 using Microsoft.Win32;
+using System.IO;
 using System.Collections.ObjectModel;
 using System.Windows;
 
@@ -302,8 +303,6 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanInstall))]
     private async Task InstallLiveryAsync()
     {
-        if (SelectedAircraft == null || !SelectedStoreType.HasValue) return;
-
         var dialog = new OpenFileDialog
         {
             Title = "Select Livery ZIP File",
@@ -312,16 +311,63 @@ public partial class MainViewModel : ObservableObject
 
         if (dialog.ShowDialog() != true) return;
 
+        await InstallLiveryFromZipAsync(dialog.FileName);
+    }
+
+    /// <summary>
+    /// Install a livery ZIP that was dropped onto the main window.
+    /// </summary>
+    public async Task InstallDroppedLiveryAsync(string zipFilePath)
+    {
+        if (!CanAcceptZipDrop())
+        {
+            StatusMessage = "Select a store type and aircraft before dropping a livery ZIP.";
+            return;
+        }
+
+        await InstallLiveryFromZipAsync(zipFilePath);
+    }
+
+    /// <summary>
+    /// Report a non-fatal drag/drop validation message through the status bar.
+    /// </summary>
+    public void ReportDropStatus(string message)
+    {
+        StatusMessage = message;
+    }
+
+    /// <summary>
+    /// Returns true when the window can accept a dropped ZIP file for installation.
+    /// </summary>
+    public bool CanAcceptZipDrop() => CanInstall() && SelectedStoreType.HasValue;
+
+    /// <summary>
+    /// Shared install pipeline used by both the file picker and drag/drop.
+    /// </summary>
+    private async Task InstallLiveryFromZipAsync(string zipFilePath)
+    {
+        if (SelectedAircraft == null || !SelectedStoreType.HasValue) return;
+
         IsLoading = true;
         StatusMessage = null;
 
         try
         {
+            if (!File.Exists(zipFilePath))
+            {
+                throw new FileNotFoundException("The selected ZIP file could not be found.", zipFilePath);
+            }
+
+            if (!Path.GetExtension(zipFilePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Only ZIP files can be installed.");
+            }
+
             var communityPath = _pathService.GetCommunityFolderPath(SelectedStoreType.Value, CustomCommunityPath);
             var airplanesPath = _pathService.GetAirplanesFolderPath(communityPath, SelectedAircraft.Name);
             var workFolderPath = _pathService.GetPmdgWorkFolderPath(SelectedStoreType.Value, SelectedAircraft.Name, CustomCommunityPath);
 
-            var livery = await _liveryInstallationService.InstallLiveryAsync(dialog.FileName, airplanesPath, workFolderPath);
+            var livery = await _liveryInstallationService.InstallLiveryAsync(zipFilePath, airplanesPath, workFolderPath);
             await _layoutService.RegenerateLayoutAsync(SelectedAircraft.LiveriesPath);
             await RefreshLiveriesCore();
 

@@ -80,6 +80,7 @@
 - [x] 10.6 Add progress indicator bound to IsLoading
 - [x] 10.7 Add empty state message when no liveries are installed
 - [x] 10.8 Add status/error message display area bound to StatusMessage
+- [x] 10.9 Add drag-and-drop ZIP installation support to reuse the install pipeline
 
 ## 11. Wiring & Integration
 
