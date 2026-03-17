@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 /nul
 
 .dotnet-home/
+.codex/
+.opencode/
+openspec/

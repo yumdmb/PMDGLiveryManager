@@ -13,4 +13,12 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ApplicationDefinition Remove="_external_compare\**\*.xaml" />
+    <Compile Remove="_external_compare\**\*.cs" />
+    <EmbeddedResource Remove="_external_compare\**\*" />
+    <None Remove="_external_compare\**\*" />
+    <Page Remove="_external_compare\**\*.xaml" />
+  </ItemGroup>
+
 </Project>

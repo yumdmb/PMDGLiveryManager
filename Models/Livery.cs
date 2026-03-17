@@ -9,4 +9,6 @@ public class Livery
     public string FolderPath { get; set; } = string.Empty;
 
     public bool IsValid { get; set; }
+
+    public string? ThumbnailPath { get; set; }
 }
