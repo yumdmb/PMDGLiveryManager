@@ -27,4 +27,4 @@
 ## 5. Verification
 
 - [x] 5.1 Build the solution and verify the new services, ViewModel changes, and UI bindings compile cleanly
-- [ ] 5.2 Manually smoke-test single ZIP install, aircraft mismatch rejection, unknown-package rejection, multi-ZIP batch install, search filtering, and thumbnail display
+- [x] 5.2 Manually smoke-test single ZIP install, aircraft mismatch rejection, unknown-package rejection, multi-ZIP batch install, search filtering, and thumbnail display
