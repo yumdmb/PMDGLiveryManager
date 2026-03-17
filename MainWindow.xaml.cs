@@ -18,9 +18,10 @@ public partial class MainWindow : Window
 
     private void Window_PreviewDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = TryGetSingleZipFile(e.Data, out _) && ViewModel?.CanAcceptZipDrop() == true
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
+        e.Effects = TryGetDroppedZipFiles(e.Data, out _)
+            && ViewModel?.CanAcceptZipDrop() == true
+                ? DragDropEffects.Copy
+                : DragDropEffects.None;
 
         e.Handled = true;
     }
@@ -34,41 +35,35 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!TryGetSingleZipFile(e.Data, out var zipFilePath))
+        if (!TryGetDroppedZipFiles(e.Data, out var zipFilePaths))
         {
-            ViewModel.ReportDropStatus("Drop a single ZIP file to install a livery.");
+            ViewModel.ReportDropStatus("Drop one or more ZIP files to install liveries.");
             return;
         }
 
-        await ViewModel.InstallDroppedLiveryAsync(zipFilePath);
+        await ViewModel.InstallDroppedLiveriesAsync(zipFilePaths);
     }
 
-    private static bool TryGetSingleZipFile(IDataObject data, out string zipFilePath)
+    private static bool TryGetDroppedZipFiles(IDataObject data, out string[] zipFilePaths)
     {
-        zipFilePath = string.Empty;
+        zipFilePaths = [];
 
         if (!data.GetDataPresent(DataFormats.FileDrop))
         {
             return false;
         }
 
-        if (data.GetData(DataFormats.FileDrop) is not string[] droppedPaths || droppedPaths.Length != 1)
+        if (data.GetData(DataFormats.FileDrop) is not string[] droppedPaths || droppedPaths.Length == 0)
         {
             return false;
         }
 
-        var filePath = droppedPaths[0];
-        if (!File.Exists(filePath))
-        {
-            return false;
-        }
+        zipFilePaths = droppedPaths
+            .Where(File.Exists)
+            .Where(path => Path.GetExtension(path).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        if (!Path.GetExtension(filePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        zipFilePath = filePath;
-        return true;
+        return zipFilePaths.Length > 0;
     }
 }

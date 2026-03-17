@@ -1,13 +1,13 @@
+namespace LiveryManager.ViewModels;
+
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LiveryManager.Models;
 using LiveryManager.Services;
 using Microsoft.Win32;
-using System.IO;
-using System.Collections.ObjectModel;
-using System.Windows;
-
-namespace LiveryManager.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
@@ -17,6 +17,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IAircraftDiscoveryService _aircraftDiscoveryService;
     private readonly ILiveryDiscoveryService _liveryDiscoveryService;
     private readonly ILiveryInstallationService _liveryInstallationService;
+    private readonly ILiveryPackageInspectionService _liveryPackageInspectionService;
     private readonly ILayoutService _layoutService;
     private readonly IConfigService _configService;
 
@@ -31,11 +32,15 @@ public partial class MainViewModel : ObservableObject
     /// <summary>The last confirmed store type (used to revert on Custom cancellation).</summary>
     private StoreType? _previousStoreType;
 
+    /// <summary>Master list used to re-apply search filtering without re-reading disk.</summary>
+    private List<Livery> _allLiveries = [];
+
     // ── Observable properties ─────────────────────────────────────────────────
 
     /// <summary>True while any background operation is in progress.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmptyState))]
+    [NotifyPropertyChangedFor(nameof(EmptyStateMessage))]
     [NotifyCanExecuteChangedFor(nameof(InstallLiveryCommand))]
     [NotifyCanExecuteChangedFor(nameof(UninstallLiveryCommand))]
     private bool _isLoading;
@@ -55,11 +60,13 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Aircraft packages discovered in the Community folder.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmptyState))]
+    [NotifyPropertyChangedFor(nameof(EmptyStateMessage))]
     private ObservableCollection<AircraftPackage> _aircraftPackages = [];
 
     /// <summary>Currently selected aircraft package.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmptyState))]
+    [NotifyPropertyChangedFor(nameof(EmptyStateMessage))]
     [NotifyCanExecuteChangedFor(nameof(InstallLiveryCommand))]
     private AircraftPackage? _selectedAircraft;
 
@@ -68,13 +75,26 @@ public partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(UninstallLiveryCommand))]
     private Livery? _selectedLivery;
 
-    /// <summary>Installed liveries for the selected aircraft.</summary>
+    /// <summary>Installed liveries for the selected aircraft after search filtering is applied.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmptyState))]
+    [NotifyPropertyChangedFor(nameof(EmptyStateMessage))]
     private ObservableCollection<Livery> _liveries = [];
 
-    /// <summary>True when an aircraft is selected, not loading, and no liveries are installed.</summary>
+    /// <summary>Current search text used to filter installed liveries by folder name or ATC ID.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EmptyStateMessage))]
+    private string? _searchTerm;
+
+    /// <summary>True when an aircraft is selected, not loading, and no liveries are currently visible.</summary>
     public bool IsEmptyState => SelectedAircraft != null && !IsLoading && Liveries.Count == 0;
+
+    /// <summary>Context-aware empty-state text for no liveries or no search matches.</summary>
+    public string EmptyStateMessage => SelectedAircraft is null
+        ? string.Empty
+        : !string.IsNullOrEmpty(SearchTerm) && _allLiveries.Count > 0 && Liveries.Count == 0
+            ? "No matching liveries found for the current search."
+            : "No liveries installed. Click 'Install ZIPs...' to add one.";
 
     // ── Static data for view bindings ─────────────────────────────────────────
 
@@ -89,6 +109,7 @@ public partial class MainViewModel : ObservableObject
         IAircraftDiscoveryService aircraftDiscoveryService,
         ILiveryDiscoveryService liveryDiscoveryService,
         ILiveryInstallationService liveryInstallationService,
+        ILiveryPackageInspectionService liveryPackageInspectionService,
         ILayoutService layoutService,
         IConfigService configService)
     {
@@ -96,6 +117,7 @@ public partial class MainViewModel : ObservableObject
         _aircraftDiscoveryService = aircraftDiscoveryService;
         _liveryDiscoveryService = liveryDiscoveryService;
         _liveryInstallationService = liveryInstallationService;
+        _liveryPackageInspectionService = liveryPackageInspectionService;
         _layoutService = layoutService;
         _configService = configService;
 
@@ -106,7 +128,7 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Load saved config and restore UI state on startup.
-    /// Sets backing fields directly to avoid triggering change handlers during init.
+    /// Sets properties with suppress flags so initialization does not re-enter change handlers.
     /// </summary>
     private void LoadSavedConfig()
     {
@@ -115,16 +137,12 @@ public partial class MainViewModel : ObservableObject
             return;
 
         _previousStoreType = config.StoreType;
-
-        // CustomCommunityPath has no change handler – set property directly
         CustomCommunityPath = config.CustomCommunityPath;
 
-        // Use suppress flag so OnSelectedStoreTypeChanged does not fire during init
         _suppressStoreTypeChanged = true;
         SelectedStoreType = config.StoreType;
         _suppressStoreTypeChanged = false;
 
-        // Trigger aircraft discovery (async fire-and-forget from ctor)
         _ = DiscoverAircraftAsync(config.LastAircraft);
     }
 
@@ -146,7 +164,8 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     partial void OnSelectedStoreTypeChanged(StoreType? value)
     {
-        if (_suppressStoreTypeChanged) return;
+        if (_suppressStoreTypeChanged)
+            return;
 
         if (value == StoreType.Custom)
         {
@@ -164,7 +183,6 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                // User cancelled – revert to previous selection without re-entering this handler
                 _suppressStoreTypeChanged = true;
                 SelectedStoreType = _previousStoreType;
                 _suppressStoreTypeChanged = false;
@@ -185,17 +203,23 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     partial void OnSelectedAircraftChanged(AircraftPackage? value)
     {
-        if (_suppressAircraftChanged) return;
+        if (_suppressAircraftChanged)
+            return;
 
-        if (value != null)
+        if (value is not null)
         {
             SaveConfig();
             _ = RefreshLiveriesAsync();
         }
         else
         {
-            Liveries = [];
+            ClearLiveries();
         }
+    }
+
+    partial void OnSearchTermChanged(string? value)
+    {
+        ApplyLiveryFilter();
     }
 
     // ── Aircraft discovery ────────────────────────────────────────────────────
@@ -206,7 +230,8 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task DiscoverAircraftAsync(string? lastAircraft = null)
     {
-        if (!SelectedStoreType.HasValue) return;
+        if (!SelectedStoreType.HasValue)
+            return;
 
         IsLoading = true;
         StatusMessage = null;
@@ -219,7 +244,7 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = $"Community folder not found: {error}";
                 AircraftPackages = [];
                 SetSelectedAircraftSuppressed(null);
-                Liveries = [];
+                ClearLiveries();
                 return;
             }
 
@@ -232,20 +257,17 @@ public partial class MainViewModel : ObservableObject
             {
                 StatusMessage = "No PMDG livery packages found in the Community folder.";
                 SetSelectedAircraftSuppressed(null);
-                Liveries = [];
+                ClearLiveries();
                 return;
             }
 
-            // Restore the last used aircraft or default to the first package
             var target = (lastAircraft != null
-                ? packages.FirstOrDefault(a => a.Name == lastAircraft)
+                ? packages.FirstOrDefault(aircraft => aircraft.Name == lastAircraft)
                 : null) ?? packages[0];
 
-            // Set via suppressed setter so OnSelectedAircraftChanged does NOT fire
             SetSelectedAircraftSuppressed(target);
             SaveConfig();
 
-            // Refresh liveries inline (IsLoading stays true for the whole sequence)
             await RefreshLiveriesCore();
         }
         catch (Exception ex)
@@ -266,12 +288,15 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task RefreshLiveriesCore()
     {
-        if (SelectedAircraft == null || !SelectedStoreType.HasValue) return;
+        if (SelectedAircraft == null || !SelectedStoreType.HasValue)
+            return;
 
         var communityPath = _pathService.GetCommunityFolderPath(SelectedStoreType.Value, CustomCommunityPath);
         var airplanesPath = _pathService.GetAirplanesFolderPath(communityPath, SelectedAircraft.Name);
         var liveries = await Task.Run(() => _liveryDiscoveryService.GetInstalledLiveries(airplanesPath));
-        Liveries = new ObservableCollection<Livery>(liveries);
+
+        _allLiveries = liveries;
+        ApplyLiveryFilter();
     }
 
     /// <summary>
@@ -279,7 +304,8 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task RefreshLiveriesAsync()
     {
-        if (SelectedAircraft == null || !SelectedStoreType.HasValue) return;
+        if (SelectedAircraft == null || !SelectedStoreType.HasValue)
+            return;
 
         IsLoading = true;
         StatusMessage = null;
@@ -305,27 +331,29 @@ public partial class MainViewModel : ObservableObject
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Select Livery ZIP File",
-            Filter = "ZIP Files (*.zip)|*.zip|All Files (*.*)|*.*"
+            Title = "Select Livery ZIP Files",
+            Filter = "ZIP Files (*.zip)|*.zip",
+            Multiselect = true
         };
 
-        if (dialog.ShowDialog() != true) return;
+        if (dialog.ShowDialog() != true || dialog.FileNames.Length == 0)
+            return;
 
-        await InstallLiveryFromZipAsync(dialog.FileName);
+        await InstallLiveriesFromZipPathsAsync(dialog.FileNames);
     }
 
     /// <summary>
-    /// Install a livery ZIP that was dropped onto the main window.
+    /// Install one or more livery ZIPs that were dropped onto the main window.
     /// </summary>
-    public async Task InstallDroppedLiveryAsync(string zipFilePath)
+    public async Task InstallDroppedLiveriesAsync(IReadOnlyList<string> zipFilePaths)
     {
         if (!CanAcceptZipDrop())
         {
-            StatusMessage = "Select a store type and aircraft before dropping a livery ZIP.";
+            StatusMessage = "Select a store type and aircraft before dropping livery ZIP files.";
             return;
         }
 
-        await InstallLiveryFromZipAsync(zipFilePath);
+        await InstallLiveriesFromZipPathsAsync(zipFilePaths);
     }
 
     /// <summary>
@@ -337,41 +365,53 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Returns true when the window can accept a dropped ZIP file for installation.
+    /// Returns true when the window can accept dropped ZIP files for installation.
     /// </summary>
     public bool CanAcceptZipDrop() => CanInstall() && SelectedStoreType.HasValue;
 
     /// <summary>
     /// Shared install pipeline used by both the file picker and drag/drop.
     /// </summary>
-    private async Task InstallLiveryFromZipAsync(string zipFilePath)
+    private async Task InstallLiveriesFromZipPathsAsync(IReadOnlyList<string> zipFilePaths)
     {
-        if (SelectedAircraft == null || !SelectedStoreType.HasValue) return;
+        if (SelectedAircraft == null || !SelectedStoreType.HasValue)
+            return;
+
+        var selectedAircraft = SelectedAircraft;
+        var storeType = SelectedStoreType.Value;
+        var normalizedZipPaths = zipFilePaths
+            .Where(path => !string.IsNullOrEmpty(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (normalizedZipPaths.Count == 0)
+        {
+            StatusMessage = "Select one or more ZIP files to install.";
+            return;
+        }
 
         IsLoading = true;
         StatusMessage = null;
 
         try
         {
-            if (!File.Exists(zipFilePath))
+            var communityPath = _pathService.GetCommunityFolderPath(storeType, CustomCommunityPath);
+            var airplanesPath = _pathService.GetAirplanesFolderPath(communityPath, selectedAircraft.Name);
+            var workFolderPath = _pathService.GetPmdgWorkFolderPath(storeType, selectedAircraft.Name, CustomCommunityPath);
+
+            var summary = await InstallLiveryBatchAsync(normalizedZipPaths, selectedAircraft, airplanesPath, workFolderPath);
+
+            if (summary.HasSuccessfulInstalls)
             {
-                throw new FileNotFoundException("The selected ZIP file could not be found.", zipFilePath);
+                await _layoutService.RegenerateLayoutAsync(selectedAircraft.LiveriesPath);
+
+                if (SelectedAircraft?.Name == selectedAircraft.Name)
+                {
+                    await RefreshLiveriesCore();
+                }
             }
 
-            if (!Path.GetExtension(zipFilePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("Only ZIP files can be installed.");
-            }
-
-            var communityPath = _pathService.GetCommunityFolderPath(SelectedStoreType.Value, CustomCommunityPath);
-            var airplanesPath = _pathService.GetAirplanesFolderPath(communityPath, SelectedAircraft.Name);
-            var workFolderPath = _pathService.GetPmdgWorkFolderPath(SelectedStoreType.Value, SelectedAircraft.Name, CustomCommunityPath);
-
-            var livery = await _liveryInstallationService.InstallLiveryAsync(zipFilePath, airplanesPath, workFolderPath);
-            await _layoutService.RegenerateLayoutAsync(SelectedAircraft.LiveriesPath);
-            await RefreshLiveriesCore();
-
-            StatusMessage = $"Livery '{livery.AtcId ?? livery.FolderName}' installed successfully.";
+            StatusMessage = BuildBatchStatusMessage(summary);
         }
         catch (Exception ex)
         {
@@ -383,12 +423,99 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    private async Task<LiveryBatchSummary> InstallLiveryBatchAsync(
+        IReadOnlyList<string> zipFilePaths,
+        AircraftPackage selectedAircraft,
+        string airplanesPath,
+        string workFolderPath)
+    {
+        var outcomes = new List<LiveryInstallOutcome>();
+
+        foreach (var zipFilePath in zipFilePaths)
+        {
+            outcomes.Add(await ProcessZipInstallAsync(zipFilePath, selectedAircraft, airplanesPath, workFolderPath));
+        }
+
+        return new LiveryBatchSummary(outcomes);
+    }
+
+    private async Task<LiveryInstallOutcome> ProcessZipInstallAsync(
+        string zipFilePath,
+        AircraftPackage selectedAircraft,
+        string airplanesPath,
+        string workFolderPath)
+    {
+        var zipFileName = Path.GetFileName(zipFilePath);
+        if (string.IsNullOrEmpty(zipFileName))
+        {
+            zipFileName = zipFilePath;
+        }
+
+        if (!File.Exists(zipFilePath))
+        {
+            return BuildOutcome(zipFilePath, zipFileName, LiveryInstallOutcomeStatus.Failed,
+                $"Failed to install '{zipFileName}': The ZIP file could not be found.");
+        }
+
+        if (!Path.GetExtension(zipFilePath).Equals(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildOutcome(zipFilePath, zipFileName, LiveryInstallOutcomeStatus.Skipped,
+                $"Skipped '{zipFileName}': Only ZIP files can be installed.");
+        }
+
+        LiveryPackageInspectionResult inspection;
+        try
+        {
+            inspection = await _liveryPackageInspectionService.InspectPackageAsync(zipFilePath, selectedAircraft.Name);
+        }
+        catch (Exception ex)
+        {
+            return BuildOutcome(zipFilePath, zipFileName, LiveryInstallOutcomeStatus.Failed,
+                $"Failed to inspect '{zipFileName}': {ex.Message}");
+        }
+
+        if (!inspection.ShouldInstall)
+        {
+            return inspection.Status switch
+            {
+                LiveryPackageValidationStatus.Mismatch when inspection.DetectedAircraft is not null => BuildOutcome(
+                    zipFilePath,
+                    zipFileName,
+                    LiveryInstallOutcomeStatus.Skipped,
+                    $"Skipped '{zipFileName}': ZIP targets '{inspection.DetectedAircraft}' but the selected aircraft is '{selectedAircraft.Name}'."),
+                _ => BuildOutcome(
+                    zipFilePath,
+                    zipFileName,
+                    LiveryInstallOutcomeStatus.Skipped,
+                    $"Skipped '{zipFileName}': {inspection.ValidationMessage ?? "The package could not be validated for the selected aircraft."}")
+            };
+        }
+
+        try
+        {
+            var livery = await _liveryInstallationService.InstallLiveryAsync(zipFilePath, airplanesPath, workFolderPath);
+            var liveryName = livery.AtcId ?? inspection.AtcId ?? livery.FolderName;
+
+            return BuildOutcome(
+                zipFilePath,
+                zipFileName,
+                LiveryInstallOutcomeStatus.Installed,
+                $"Validated '{zipFileName}' for '{selectedAircraft.Name}' and installed '{liveryName}'.");
+        }
+        catch (Exception ex)
+        {
+            return BuildOutcome(zipFilePath, zipFileName, LiveryInstallOutcomeStatus.Failed,
+                $"Failed to install '{zipFileName}': {ex.Message}");
+        }
+    }
+
     private bool CanInstall() => SelectedAircraft != null && !IsLoading;
 
     [RelayCommand(CanExecute = nameof(CanUninstall))]
     private async Task UninstallLiveryAsync()
     {
-        if (SelectedLivery == null || SelectedAircraft == null || !SelectedStoreType.HasValue) return;
+        if (SelectedLivery == null || SelectedAircraft == null || !SelectedStoreType.HasValue)
+            return;
 
         var livery = SelectedLivery;
 
@@ -399,7 +526,8 @@ public partial class MainViewModel : ObservableObject
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
-        if (confirm != MessageBoxResult.Yes) return;
+        if (confirm != MessageBoxResult.Yes)
+            return;
 
         IsLoading = true;
         StatusMessage = null;
@@ -428,12 +556,70 @@ public partial class MainViewModel : ObservableObject
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Sets SelectedAircraft via its backing field to avoid triggering OnSelectedAircraftChanged.
+    /// Sets SelectedAircraft via a suppress flag to avoid triggering OnSelectedAircraftChanged.
     /// </summary>
     private void SetSelectedAircraftSuppressed(AircraftPackage? value)
     {
         _suppressAircraftChanged = true;
         SelectedAircraft = value;
         _suppressAircraftChanged = false;
+    }
+
+    private void ClearLiveries()
+    {
+        _allLiveries = [];
+        Liveries = [];
+        SelectedLivery = null;
+    }
+
+    private void ApplyLiveryFilter()
+    {
+        var filter = SearchTerm;
+        IEnumerable<Livery> filteredLiveries = _allLiveries;
+
+        if (!string.IsNullOrEmpty(filter))
+        {
+            filteredLiveries = _allLiveries.Where(livery =>
+                livery.FolderName.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrEmpty(livery.AtcId) && livery.AtcId.Contains(filter, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        var selectedFolderPath = SelectedLivery?.FolderPath;
+        Liveries = new ObservableCollection<Livery>(filteredLiveries);
+        SelectedLivery = selectedFolderPath is not null
+            ? Liveries.FirstOrDefault(livery => livery.FolderPath.Equals(selectedFolderPath, StringComparison.Ordinal))
+            : null;
+
+        OnPropertyChanged(nameof(EmptyStateMessage));
+    }
+
+    private static string BuildBatchStatusMessage(LiveryBatchSummary summary)
+    {
+        if (summary.Outcomes.Count == 0)
+        {
+            return "No ZIP files were processed.";
+        }
+
+        if (summary.IsSingleItem)
+        {
+            return summary.Outcomes[0].Message;
+        }
+
+        return $"Batch complete: {summary.InstalledCount} installed, {summary.SkippedCount} skipped, {summary.FailedCount} failed.";
+    }
+
+    private static LiveryInstallOutcome BuildOutcome(
+        string zipFilePath,
+        string zipFileName,
+        LiveryInstallOutcomeStatus status,
+        string message)
+    {
+        return new LiveryInstallOutcome
+        {
+            ZipFilePath = zipFilePath,
+            ZipFileName = zipFileName,
+            Status = status,
+            Message = message
+        };
     }
 }
