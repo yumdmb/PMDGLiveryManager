@@ -13,18 +13,6 @@ public class LiveryPackageInspectionService : ILiveryPackageInspectionService
 
     private static readonly Regex PmdgAircraftRegex = new(@"pmdg-aircraft-[\w-]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static readonly HashSet<string> SupportedAircraftPackages = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "pmdg-aircraft-736",
-        "pmdg-aircraft-737",
-        "pmdg-aircraft-738",
-        "pmdg-aircraft-739",
-        "pmdg-aircraft-772",
-        "pmdg-aircraft-77l",
-        "pmdg-aircraft-77f",
-        "pmdg-aircraft-77w"
-    };
-
     private static readonly Dictionary<string, string> AliasTokens = new(StringComparer.OrdinalIgnoreCase)
     {
         ["b736"] = "pmdg-aircraft-736",
@@ -219,8 +207,14 @@ public class LiveryPackageInspectionService : ILiveryPackageInspectionService
             }
 
             var normalizedProductPackage = NormalizeAircraftToken(productPackage);
-            return SupportedAircraftPackages.Contains(normalizedProductPackage)
-                ? normalizedProductPackage
+            if (normalizedProductPackage.StartsWith("pmdg-aircraft-", StringComparison.Ordinal))
+            {
+                return normalizedProductPackage;
+            }
+
+            var match = PmdgAircraftRegex.Match(normalizedProductPackage);
+            return match.Success
+                ? NormalizeAircraftToken(match.Value)
                 : null;
         }
         catch
@@ -238,11 +232,7 @@ public class LiveryPackageInspectionService : ILiveryPackageInspectionService
         var match = PmdgAircraftRegex.Match(content);
         if (match.Success)
         {
-            var normalizedMatch = NormalizeAircraftToken(match.Value);
-            if (SupportedAircraftPackages.Contains(normalizedMatch))
-            {
-                return normalizedMatch;
-            }
+            return NormalizeAircraftToken(match.Value);
         }
 
         foreach (var (alias, canonical) in AliasTokens)
